@@ -1,13 +1,13 @@
 # Wan 2.1 Quantized Model Setup
 
-Setup script for deploying quantized Wan 2.1 video generation model with voice cloning TTS capabilities on Vast.ai.
+Setup script for deploying quantized Wan 2.1 video generation model with ComfyUI interface on Vast.ai.
 
 ## Features
 
 - Quantized Wan 2.1 14B model for efficient video generation
-- XTTS v2 voice cloning for documentary-style narration
-- FastAPI endpoints for easy integration
-- Supervisor-managed services for reliability
+- ComfyUI web interface for workflow creation and testing
+- Systemd service for reliable operation
+- Compatible PyTorch and NumPy versions
 
 ## Usage with Vast.ai
 
@@ -16,7 +16,7 @@ Setup script for deploying quantized Wan 2.1 video generation model with voice c
 Use this command to create a Vast.ai instance with all necessary configuration:
 
 ```bash
-vastai create instance <OFFER_ID> --image vastai/pytorch:2.5.1-cuda-12.1.1 --env '-p 1111:1111 -p 6006:6006 -p 8080:8080 -p 8384:8384 -p 8000:8000 -p 8001:8001 -p 22:22 -e OPEN_BUTTON_PORT=1111 -e OPEN_BUTTON_TOKEN=1 -e JUPYTER_DIR=/ -e DATA_DIRECTORY=/workspace/ -e PORTAL_CONFIG="localhost:1111:11111:/:Instance Portal|localhost:8080:18080:/:Jupyter|localhost:8080:8080:/terminals/1:Jupyter Terminal|localhost:8000:8000:/:Wan2.1 API|localhost:8001:8001:/:TTS API|localhost:6006:16006:/:Tensorboard" -e PROVISIONING_SCRIPT="https://raw.githubusercontent.com/altommo/wan21-quantized-setup/main/setup.sh" -e AUTH_EXCLUDE="8000,8001"' --disk 500 --jupyter --ssh --direct
+vastai create instance <OFFER_ID> --image vastai/pytorch:2.5.1-cuda-12.1.1 --env '-p 1111:1111 -p 6006:6006 -p 8080:8080 -p 8384:8384 -p 8000:8000 -p 8188:8188 -p 22:22 -e OPEN_BUTTON_PORT=1111 -e OPEN_BUTTON_TOKEN=1 -e JUPYTER_DIR=/ -e DATA_DIRECTORY=/workspace/ -e PORTAL_CONFIG="localhost:1111:11111:/:Instance Portal|localhost:8080:18080:/:Jupyter|localhost:8080:8080:/terminals/1:Jupyter Terminal|localhost:8188:8188:/:ComfyUI|localhost:6006:16006:/:Tensorboard" -e PROVISIONING_SCRIPT="https://raw.githubusercontent.com/altommo/wan21-quantized-setup/main/setup.sh" -e AUTH_EXCLUDE="8000,8188"' --disk 500 --jupyter --ssh --direct
 ```
 
 Find an appropriate `<OFFER_ID>` using:
@@ -24,49 +24,50 @@ Find an appropriate `<OFFER_ID>` using:
 vastai search offers --disk 50 --gpu-ram 80 --gpu-name A100
 ```
 
-### API Endpoints
+### SSH Setup
 
-#### Video Generation API
+1. Generate an SSH key:
+   ```bash
+   ssh-keygen -t rsa -b 4096 -f ~/.ssh/vast_key
+   ```
 
-```bash
-# Generate a video
-curl -X POST "http://your-server-ip:8000/generate" \
-  -H "Content-Type: multipart/form-data" \
-  -F "prompt=a beautiful sunset over mountains" \
-  -F "frames=16" \
-  -F "width=512" \
-  -F "height=320" \
-  -F "fps=8"
+2. Add the key to Vast.ai:
+   ```bash
+   vastai create ssh-key "$(cat ~/.ssh/vast_key.pub)"
+   ```
 
-# Check generation status and download
-curl -X GET "http://your-server-ip:8000/result/JOB_ID_HERE" --output video.mp4
-```
+3. Add the key to your instance via the Vast.ai web interface
 
-#### Voice Cloning API
+4. Connect to your instance:
+   ```bash
+   ssh -i ~/.ssh/vast_key root@YOUR_IP -p YOUR_PORT
+   ```
 
-```bash
-# Clone a voice
-curl -X POST "http://your-server-ip:8001/clone_voice" \
-  -H "Content-Type: multipart/form-data" \
-  -F "text=This is a test of the voice cloning system for documentary narration." \
-  -F "reference_audio=@your_voice_sample.wav" \
-  -F "language=en"
+### Access ComfyUI Web Interface
 
-# Download generated audio
-curl -X GET "http://your-server-ip:8001/voice/JOB_ID_HERE" --output audio.wav
-```
+1. Via SSH tunnel:
+   ```bash
+   ssh -i ~/.ssh/vast_key -L 8188:localhost:8188 root@YOUR_IP -p YOUR_PORT
+   ```
+   Then access http://localhost:8188 in your browser
 
-## Local Access via SSH Tunnel
+2. Or directly via external URL:
+   ```
+   http://YOUR_IP:8188
+   ```
 
-For secure access, use SSH tunneling:
+## Working with the Wan 2.1 Model
 
-```bash
-ssh -L 8000:localhost:8000 -L 8001:localhost:8001 root@your-server-ip -p your-ssh-port
-```
+1. In ComfyUI, load the workflow:
+   - Create a UnetLoaderGGUF node
+   - Set the model path to: `models/unet/Wan2.1-T2V-14B-q5_k.gguf`
+   - Create CLIPTextEncode for your prompt
+   - Connect to VideoGenPipeline and WriteVideo nodes
 
-Then access the APIs locally:
-- http://localhost:8000/healthcheck
-- http://localhost:8001/clone_voice
+2. Recommended settings:
+   - Frames: 8-16 for testing (more for production)
+   - Resolution: 384x224 for quick tests, up to 512x320 for better quality
+   - Steps: 30-50 (more steps = better quality, longer generation)
 
 ## Resource Requirements
 
